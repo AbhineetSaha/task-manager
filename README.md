@@ -1,8 +1,8 @@
-# Fullstack Task Manager (MERN)
+![image](https://github.com/user-attachments/assets/0153eb95-eb8a-4cd9-ac99-ca9786add315)# Fullstack Task Manager (MERN)
 
 # Overview
 
-The Cloud-Based Task Manager is a web application designed to streamline team task management. Built using the MERN stack (MongoDB, Express.js, React, and Node.js), this platform provides a user-friendly interface for efficient task assignment, tracking, and collaboration. The application caters to administrators and regular users, offering comprehensive features to enhance productivity and organization.
+The Cloud-Based Task Manager is a web application designed to streamline team task management. Built using the PostgreSql(Supabase), Express.js, React, and Node.js, this platform provides a user-friendly interface for efficient task assignment, tracking, and collaboration. The application caters to administrators and regular users, offering comprehensive features to enhance productivity and organization.
 
 ### Why/Problem?
 
@@ -95,35 +95,27 @@ The Cloud-Based Task Manager is an innovative solution that brings efficiency an
 
 First, create the environment variables file `.env` in the server folder. The `.env` file contains the following environment variables:
 
-- MONGODB_URI = `your MongoDB URL`
+- SUPABASE_URL = `your Supabase API URL`
 - JWT_SECRET = `any secret key - must be secured`
 - PORT = `8800` or any port number
 - NODE_ENV = `development`
 
 &nbsp;
 
-## Set Up MongoDB:
+## Set Up PostgreSQL(Supabase):
 
-1. Setting up MongoDB involves a few steps:
+1. Setting up PostgreSQL in Supabase involves a few steps:
 
-   - Visit MongoDB Atlas Website
+   - Create an account in Supabase.
+   - Once logged in, click on "New Project" from the dashboard.
+   - Fill in the project details such as project name, password, and region.
+   - Click "Create new project" to proceed.
+   - After the project is created, navigate to the "Database" tab in the Supabase dashboard.
+   - You’ll see your PostgreSQL database details, including the connection string and credentials (host, port, database name, username, password).
+   - Create Tables according to the schema
+     ![image](https://github.com/user-attachments/assets/8a3e1244-e61d-42c6-9dd8-d59d117d13e7)
 
-     - Go to the MongoDB Atlas website: [https://www.mongodb.com/cloud/atlas](https://www.mongodb.com/cloud/atlas).
-
-   - Create an Account
-   - Log in to your MongoDB Atlas account.
-   - Create a New Cluster
-   - Choose a Cloud Provider and Region
-   - Configure Cluster Settings
-   - Create Cluster
-   - Wait for Cluster to Deploy
-   - Create Database User
-   - Set Up IP Whitelist
-   - Connect to Cluster
-   - Configure Your Application
-   - Test the Connection
-
-2. Create a new database and configure the `.env` file with the MongoDB connection URL.
+2. Create a new database and configure the `.env` file with the Supabase connection URL.
 
 ## Steps to run server
 
@@ -143,7 +135,6 @@ If configured correctly, you should see a message indicating that the server is 
 First, create the environment variables file `.env` in the client folder. The `.env` file contains the following environment variables:
 
 - VITE_APP_BASE_URL = `http://localhost:8800` #Note: Change the port 8800 to your port number.
-- VITE_APP_FIREBASE_API_KEY = `Firebase api key`
 
 ## Steps to run client
 
