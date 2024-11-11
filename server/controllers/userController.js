@@ -1,14 +1,15 @@
-import { response } from "express";
-import User from "../models/user.js";
-import { createJWT } from "../utils/index.js";
-import Notice from "../models/notification.js";
-
+import {supabase} from '../utils/index.js'
+import { createJWT } from '../utils/index.js';
+ 
 export const registerUser = async (req, res) => {
   try {
     const { name, email, password, isAdmin, role, title } = req.body;
-
-    const userExist = await User.findOne({ email });
-
+    const { data: userExist, error: userExistError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('email', email)
+      .single();
+    
     if (userExist) {
       return res.status(400).json({
         status: false,
@@ -16,17 +17,14 @@ export const registerUser = async (req, res) => {
       });
     }
 
-    const user = await User.create({
-      name,
-      email,
-      password,
-      isAdmin,
-      role,
-      title,
-    });
-
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .insert([{ name, email, password, isAdmin, role, title }])
+      .select('*')
+      .single();
+    
     if (user) {
-      isAdmin ? createJWT(res, user._id) : null;
+      if (isAdmin) createJWT(res, user.id);
 
       user.password = undefined;
 
@@ -46,7 +44,11 @@ export const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    const user = await User.findOne({ email });
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('email', email)
+      .single();
 
     if (!user) {
       return res
@@ -54,17 +56,17 @@ export const loginUser = async (req, res) => {
         .json({ status: false, message: "Invalid email or password." });
     }
 
-    if (!user?.isActive) {
+    if (!user.isActive) {
       return res.status(401).json({
         status: false,
         message: "User account has been deactivated, contact the administrator",
       });
     }
 
-    const isMatch = await user.matchPassword(password);
+    const isMatch = user.password === password; // Replace with proper password matching logic
 
     if (user && isMatch) {
-      createJWT(res, user._id);
+      createJWT(res, user.id);
 
       user.password = undefined;
 
@@ -93,10 +95,11 @@ export const logoutUser = async (req, res) => {
     return res.status(400).json({ status: false, message: error.message });
   }
 };
-
 export const getTeamList = async (req, res) => {
   try {
-    const users = await User.find().select("name title role email isActive");
+    const { data: users, error: usersError } = await supabase
+      .from('users')
+      .select('id, name, title, role, email, isActive');
 
     res.status(200).json(users);
   } catch (error) {
@@ -109,11 +112,13 @@ export const getNotificationsList = async (req, res) => {
   try {
     const { userId } = req.user;
 
-    const notice = await Notice.find({
-      team: userId,
-      isRead: { $nin: [userId] },
-    }).populate("task", "title");
+    const { data: notice, error: noticeError } = await supabase
+      .from('notices')
+      .select('*')
+      .eq('isRead', false)
+      .contains('team', [userId]);
 
+    console.log(notice);
     res.status(201).json(notice);
   } catch (error) {
     console.log(error);
@@ -126,23 +131,28 @@ export const updateUserProfile = async (req, res) => {
     const { userId, isAdmin } = req.user;
     const { _id } = req.body;
 
-    const id =
-      isAdmin && userId === _id
-        ? userId
-        : isAdmin && userId !== _id
-        ? _id
-        : userId;
-
-    const user = await User.findById(id);
+    const id = isAdmin && userId === _id ? userId : isAdmin && userId !== _id ? _id : userId;
+    
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', id)
+      .single();
+    
 
     if (user) {
-      user.name = req.body.name || user.name;
-      user.title = req.body.title || user.title;
-      user.role = req.body.role || user.role;
+      const updates = {
+        name: req.body.name || user.name,
+        title: req.body.title || user.title,
+        role: req.body.role || user.role,
+      };
 
-      const updatedUser = await user.save();
+      const { data: updatedUser, error: updateError } = await supabase
+        .from('users')
+        .update(updates)
+        .eq('id', id)
+        .single();
 
-      user.password = undefined;
 
       res.status(201).json({
         status: true,
@@ -161,21 +171,18 @@ export const updateUserProfile = async (req, res) => {
 export const markNotificationRead = async (req, res) => {
   try {
     const { userId } = req.user;
-
     const { isReadType, id } = req.query;
 
     if (isReadType === "all") {
-      await Notice.updateMany(
-        { team: userId, isRead: { $nin: [userId] } },
-        { $push: { isRead: userId } },
-        { new: true }
-      );
+      await supabase
+        .from('notices')
+        .update({ "isRead": true })
+        .contains('team', [userId] );  // Assuming 'team' contains the userId and you want an exact match
     } else {
-      await Notice.findOneAndUpdate(
-        { _id: id, isRead: { $nin: [userId] } },
-        { $push: { isRead: userId } },
-        { new: true }
-      );
+      await supabase
+        .from('notices')
+        .update({ "isRead": true })
+        .eq('id', id);  // This is correct for updating a record with a specific 'id'
     }
 
     res.status(201).json({ status: true, message: "Done" });
@@ -189,18 +196,24 @@ export const changeUserPassword = async (req, res) => {
   try {
     const { userId } = req.user;
 
-    const user = await User.findById(userId);
-
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .single();
     if (user) {
-      user.password = req.body.password;
+      const { data: updatedUser, error: updateError } = await supabase
+        .from('users')
+        .update({ password: req.body.password })
+        .select('*')
+        .eq('id', userId)
+        .single();
 
-      await user.save();
-
-      user.password = undefined;
+      updatedUser.password = undefined;
 
       res.status(201).json({
         status: true,
-        message: `Password chnaged successfully.`,
+        message: "Password changed successfully.",
       });
     } else {
       res.status(404).json({ status: false, message: "User not found" });
@@ -213,20 +226,26 @@ export const changeUserPassword = async (req, res) => {
 
 export const activateUserProfile = async (req, res) => {
   try {
+
     const { id } = req.params;
 
-    const user = await User.findById(id);
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', id)
+      .single();
 
     if (user) {
-      user.isActive = req.body.isActive; //!user.isActive
-
-      await user.save();
+      const { data: updatedUser, error: updateError } = await supabase
+        .from('users')
+        .update({ isActive: req.body.isActive })
+        .select('*')
+        .eq('id', id)
+        .single();
 
       res.status(201).json({
         status: true,
-        message: `User account has been ${
-          user?.isActive ? "activated" : "disabled"
-        }`,
+        message: `User account has been ${updatedUser.isActive ? "activated" : "disabled"}`,
       });
     } else {
       res.status(404).json({ status: false, message: "User not found" });
@@ -241,13 +260,31 @@ export const deleteUserProfile = async (req, res) => {
   try {
     const { id } = req.params;
 
-    await User.findByIdAndDelete(id);
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .delete()
+      .eq('id', id);
 
-    res
-      .status(200)
-      .json({ status: true, message: "User deleted successfully" });
+    res.status(200).json({ status: true, message: "User deleted successfully" });
   } catch (error) {
     console.log(error);
     return res.status(400).json({ status: false, message: error.message });
   }
 };
+
+export const getUser = async (req, res) => {
+  try {
+    const { id } = req.query;
+
+    const {data: user, error: userError} = await supabase
+      .from('users')
+      .select('id, name, title, role, email, isActive')
+      .eq('id', id)
+      .single();
+
+    res.status(200).json(user);
+  } catch (error) {
+    console.log(error);
+    return res.status(400).json({ status: false, message: error.message });
+  }
+}

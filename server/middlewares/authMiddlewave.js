@@ -1,16 +1,18 @@
-import jwt from "jsonwebtoken";
-import User from "../models/user.js";
-
+import jwt, { decode } from "jsonwebtoken";
+import { supabase } from "../utils/index.js";
 const protectRoute = async (req, res, next) => {
   try {
     let token = req.cookies?.token;
+    console.log(token);
 
     if (token) {
       const decodedToken = jwt.verify(token, process.env.JWT_SECRET);
 
-      const resp = await User.findById(decodedToken.userId).select(
-        "isAdmin email"
-      );
+      const resp = await supabase
+        .from("users")
+        .select("isAdmin email")
+        .eq(decodedToken.userId, "id")
+        .single();
 
       req.user = {
         email: resp.email,
@@ -32,8 +34,14 @@ const protectRoute = async (req, res, next) => {
   }
 };
 
-const isAdminRoute = (req, res, next) => {
-  if (req.user && req.user.isAdmin) {
+const isAdminRoute = async (req, res, next) => {
+  const resp = await supabase
+    .from("users")
+    .select("isAdmin")
+    .eq("id", req.user.userId)
+    .single();
+  console.log(resp);
+  if (req.user && resp.data.isAdmin) {
     next();
   } else {
     return res.status(401).json({

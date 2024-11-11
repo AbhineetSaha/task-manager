@@ -2,30 +2,71 @@ import React, { Fragment, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AiTwotoneFolderOpen } from "react-icons/ai";
 import { BsThreeDots } from "react-icons/bs";
-import { HiDuplicate } from "react-icons/hi";
+import { HiDuplicate, HiDocument } from "react-icons/hi";
 import { MdAdd, MdOutlineEdit } from "react-icons/md";
 import { RiDeleteBin6Line } from "react-icons/ri";
 import { Menu, Transition } from "@headlessui/react";
 import AddTask from "./AddTask";
 import AddSubTask from "./AddSubTask";
 import ConfirmatioDialog from "../Dialogs";
+import { useDuplicateTaskMutation, useTrashTaskMutation } from "../../redux/slices/api/taskApiSlice";
+import { toast } from "sonner";
+import AddTaskFile from "./AddTaskFile";
 
-const TaskDialog = ({ task }) => {
+const TaskDialog = ({ user, task }) => {
   const [open, setOpen] = useState(false);
   const [openEdit, setOpenEdit] = useState(false);
+  const [openAddFile, setAddOpenFile] = useState(false);
   const [openDialog, setOpenDialog] = useState(false);
 
   const navigate = useNavigate();
+  const [deleteTask] = useTrashTaskMutation();
+  const [duplicateTask] = useDuplicateTaskMutation();
 
-  const duplicateHandler = () => {};
-  const deleteClicks = () => {};
-  const deleteHandler = () => {};
+  const duplicateHandler = async () => {
+    try{
+      const res = await duplicateTask(task.id).unwrap();
+
+      toast.success(res?.message);
+
+      setTimeout(() => {
+        setOpenDialog(false);
+        window.location.reload();
+      },500);
+    }catch(err){
+      console.err(err);
+      toast.error(err?.data?.message || err.error);
+    }
+  };
+
+  const deleteClicks = () => {
+    setOpenDialog(true);
+  };
+  
+  const deleteHandler = async() => {
+    try{
+      const res = await deleteTask({
+        id: task.id,
+        isTrashed: "trash",
+      }).unwrap();
+
+      toast.success(res?.message);
+
+      setTimeout(() =>{
+        setOpenDialog(false);
+        window.location.reload();
+      }, 500);
+    }catch (err) {
+      console.log(err);
+      toast.error(err?.data?.message || err.error);
+    }
+  };
 
   const items = [
     {
       label: "Open Task",
       icon: <AiTwotoneFolderOpen className='mr-2 h-5 w-5' aria-hidden='true' />,
-      onClick: () => navigate(`/task/${task._id}`),
+      onClick: () => navigate(`/task/${task.id}`),
     },
     {
       label: "Edit",
@@ -33,15 +74,15 @@ const TaskDialog = ({ task }) => {
       onClick: () => setOpenEdit(true),
     },
     {
-      label: "Add Sub-Task",
-      icon: <MdAdd className='mr-2 h-5 w-5' aria-hidden='true' />,
-      onClick: () => setOpen(true),
-    },
-    {
       label: "Duplicate",
       icon: <HiDuplicate className='mr-2 h-5 w-5' aria-hidden='true' />,
-      onClick: () => duplicateHanlder(),
+      onClick: () => duplicateHandler(),
     },
+    {
+      label: "Add File",
+      icon: <HiDocument className='mr-2 h-5 w-5' aria-hidden='true' />,
+      onClick: () => setAddOpenFile(true),
+    }
   ];
 
   return (
@@ -80,7 +121,7 @@ const TaskDialog = ({ task }) => {
                 ))}
               </div>
 
-              <div className='px-1 py-1'>
+              {user?.isAdmin && <div className='px-1 py-1'>
                 <Menu.Item>
                   {({ active }) => (
                     <button
@@ -97,7 +138,7 @@ const TaskDialog = ({ task }) => {
                     </button>
                   )}
                 </Menu.Item>
-              </div>
+              </div>}
             </Menu.Items>
           </Transition>
         </Menu>
@@ -111,6 +152,8 @@ const TaskDialog = ({ task }) => {
       />
 
       <AddSubTask open={open} setOpen={setOpen} />
+
+      <AddTaskFile open={openAddFile} setOpen={setAddOpenFile} task={task}/>
 
       <ConfirmatioDialog
         open={openDialog}

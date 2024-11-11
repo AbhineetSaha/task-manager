@@ -1,49 +1,52 @@
-import Notice from "../models/notification.js";
-import Task from "../models/task.js";
-import User from "../models/user.js";
-
+import { supabase } from '../utils/index.js';
 export const createTask = async (req, res) => {
   try {
     const { userId } = req.user;
-
     const { title, team, stage, date, priority, assets } = req.body;
 
     let text = "New task has been assigned to you";
+
     if (team?.length > 1) {
-      text = text + ` and ${team?.length - 1} others.`;
+      text += ` and ${team.length - 1} others.`;
     }
 
-    text =
-      text +
-      ` The task priority is set a ${priority} priority, so check and act accordingly. The task date is ${new Date(
-        date
-      ).toDateString()}. Thank you!!!`;
+    text += ` The task priority is set to ${priority} priority, so check and act accordingly. The task date is ${new Date(
+      date
+    ).toDateString()}. Thank you!!!`;
 
     const activity = {
-      type: "assigned",
+      type: 'assigned',
       activity: text,
       by: userId,
     };
 
-    const task = await Task.create({
-      title,
-      team,
-      stage: stage.toLowerCase(),
-      date,
-      priority: priority.toLowerCase(),
-      assets,
-      activities: activity,
-    });
+    const { data: task, error } = await supabase
+      .from('tasks')
+      .insert({
+        title,
+        team,
+        stage: stage.toLowerCase(),
+        date,
+        priority: priority.toLowerCase(),
+        assets,
+        activities: [activity],
+      })
+      .select('*')
+      .single();
 
-    await Notice.create({
-      team,
-      text,
-      task: task._id,
-    });
+    if (error) throw error;
 
-    res
-      .status(200)
-      .json({ status: true, task, message: "Task created successfully." });
+    const { error: noticeError } = await supabase
+      .from('notices')
+      .insert({
+        team,
+        text,
+        task: task.id,
+      });
+
+    if (noticeError) throw noticeError;
+
+    res.status(200).json({ status: true, task, message: 'Task created successfully.' });
   } catch (error) {
     console.log(error);
     return res.status(400).json({ status: false, message: error.message });
@@ -54,42 +57,43 @@ export const duplicateTask = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const task = await Task.findById(id);
+    const { data: task, error } = await supabase
+      .from('tasks')
+      .select('*')
+      .eq('id', id)
+      .single();
 
-    const newTask = await Task.create({
-      ...task,
-      title: task.title + " - Duplicate",
-    });
+    if (error) throw error;
 
-    newTask.team = task.team;
-    newTask.subTasks = task.subTasks;
-    newTask.assets = task.assets;
-    newTask.priority = task.priority;
-    newTask.stage = task.stage;
+    task.id = undefined;
 
-    await newTask.save();
+    const { data: newTask, error: newTaskError } = await supabase
+      .from('tasks')
+      .insert({
+        ...task,
+        title: `${task.title} - Duplicate`,
+      })
+      .select('*')
+      .single();
 
-    //alert users of the task
-    let text = "New task has been assigned to you";
+    if (newTaskError) throw newTaskError;
+
+    let text = 'New task has been assigned to you';
     if (task.team.length > 1) {
-      text = text + ` and ${task.team.length - 1} others.`;
+      text += ` and ${task.team.length - 1} others.`;
     }
 
-    text =
-      text +
-      ` The task priority is set a ${
-        task.priority
-      } priority, so check and act accordingly. The task date is ${task.date.toDateString()}. Thank you!!!`;
+    text += ` The task priority is set to ${task.priority} priority, so check and act accordingly. The task date is ${new Date(
+      task.date
+    ).toDateString()}. Thank you!!!`;
 
-    await Notice.create({
+    await supabase.from('notices').insert({
       team: task.team,
       text,
-      task: newTask._id,
+      task: newTask.id,
     });
 
-    res
-      .status(200)
-      .json({ status: true, message: "Task duplicated successfully." });
+    res.status(200).json({ status: true, message: 'Task duplicated successfully.' });
   } catch (error) {
     console.log(error);
     return res.status(400).json({ status: false, message: error.message });
@@ -102,21 +106,28 @@ export const postTaskActivity = async (req, res) => {
     const { userId } = req.user;
     const { type, activity } = req.body;
 
-    const task = await Task.findById(id);
+    const { data: task, error } = await supabase
+      .from('tasks')
+      .select('activities')
+      .eq('id', id)
+      .single();
 
-    const data = {
+    if (error) throw error;
+
+    const newActivity = {
       type,
       activity,
       by: userId,
     };
 
-    task.activities.push(data);
+    const updatedActivities = [...task.activities, newActivity];
 
-    await task.save();
+    await supabase
+      .from('tasks')
+      .update({ activities: updatedActivities })
+      .eq('id', id);
 
-    res
-      .status(200)
-      .json({ status: true, message: "Activity posted successfully." });
+    res.status(200).json({ status: true, message: 'Activity posted successfully.' });
   } catch (error) {
     console.log(error);
     return res.status(400).json({ status: false, message: error.message });
@@ -125,94 +136,82 @@ export const postTaskActivity = async (req, res) => {
 
 export const dashboardStatistics = async (req, res) => {
   try {
-    const { userId, isAdmin } = req.user;
+    const { userId } = req.user;
+    const { data } = await supabase.from('users').select('isAdmin').eq('id', userId).single();
+    const isAdmin = data.isAdmin;
+    console.log(isAdmin);
+    let query = supabase
+      .from('tasks')
+      .select('*')
+      .eq('isTrashed', false);
+      
+    if(isAdmin == false){
+      query = query.contains('team',[userId]);
+    }
 
-    const allTasks = isAdmin
-      ? await Task.find({
-          isTrashed: false,
-        })
-          .populate({
-            path: "team",
-            select: "name role title email",
-          })
-          .sort({ _id: -1 })
-      : await Task.find({
-          isTrashed: false,
-          team: { $all: [userId] },
-        })
-          .populate({
-            path: "team",
-            select: "name role title email",
-          })
-          .sort({ _id: -1 });
-
-    const users = await User.find({ isActive: true })
-      .select("name title role isAdmin createdAt")
+    const { data: allTasks, error } = await query;
+    if (error) throw error;
+    const { data: users, error: userError } = await supabase
+      .from('users')
+      .select('name, title, role, isAdmin, createdAt, isActive')
+      .eq('isActive', true)
       .limit(10)
-      .sort({ _id: -1 });
+      .order('id', { ascending: false });
 
-    //   group task by stage and calculate counts
-    const groupTaskks = allTasks.reduce((result, task) => {
+    if (userError) throw userError;
+
+    const groupTasks = allTasks.reduce((result, task) => {
       const stage = task.stage;
-
-      if (!result[stage]) {
-        result[stage] = 1;
-      } else {
-        result[stage] += 1;
-      }
-
+      result[stage] = (result[stage] || 0) + 1;
       return result;
     }, {});
 
-    // Group tasks by priority
     const groupData = Object.entries(
       allTasks.reduce((result, task) => {
-        const { priority } = task;
-
-        result[priority] = (result[priority] || 0) + 1;
+        result[task.priority] = (result[task.priority] || 0) + 1;
         return result;
       }, {})
     ).map(([name, total]) => ({ name, total }));
 
-    // calculate total tasks
-    const totalTasks = allTasks?.length;
-    const last10Task = allTasks?.slice(0, 10);
+    const totalTasks = allTasks.length;
+    const last10Tasks = allTasks.slice(0, 10);
 
     const summary = {
       totalTasks,
-      last10Task,
+      last10Tasks,
       users: isAdmin ? users : [],
-      tasks: groupTaskks,
+      tasks: groupTasks,
       graphData: groupData,
     };
 
     res.status(200).json({
       status: true,
-      message: "Successfully",
+      message: 'Successfully fetched dashboard statistics',
       ...summary,
     });
   } catch (error) {
-    console.log(error);
+    console.error(error);
     return res.status(400).json({ status: false, message: error.message });
   }
 };
 
+
 export const getTasks = async (req, res) => {
-  try {
+  try{
+    const {userId} = req.user;
+    const { data } = await supabase.from('users').select('isAdmin').eq('id', userId).single();
+    const isAdmin = data.isAdmin;
     const { stage, isTrashed } = req.query;
 
-    let query = { isTrashed: isTrashed ? true : false };
+    let queryResult = supabase.from("tasks").select("*").eq('isTrashed', isTrashed);
 
-    if (stage) {
-      query.stage = stage;
+    if(stage){
+      queryResult = queryResult.eq("stage", stage);
     }
 
-    let queryResult = Task.find(query)
-      .populate({
-        path: "team",
-        select: "name title email",
-      })
-      .sort({ _id: -1 });
+    if(!isAdmin){
+      queryResult = queryResult.contains('team', [userId]);
+    }
 
     const tasks = await queryResult;
 
@@ -220,7 +219,7 @@ export const getTasks = async (req, res) => {
       status: true,
       tasks,
     });
-  } catch (error) {
+  }catch (error){
     console.log(error);
     return res.status(400).json({ status: false, message: error.message });
   }
@@ -230,15 +229,13 @@ export const getTask = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const task = await Task.findById(id)
-      .populate({
-        path: "team",
-        select: "name title role email",
-      })
-      .populate({
-        path: "activities.by",
-        select: "name",
-      });
+    const { data: task, error } = await supabase
+      .from('tasks')
+      .select(`*`)
+      .eq('id', id)
+      .single();
+
+    if (error) throw error;
 
     res.status(200).json({
       status: true,
@@ -253,49 +250,94 @@ export const getTask = async (req, res) => {
 export const createSubTask = async (req, res) => {
   try {
     const { title, tag, date } = req.body;
-
     const { id } = req.params;
+
+    const { data: task, error: fetchError } = await supabase
+      .from('tasks')
+      .select('subTasks')
+      .eq('id', id)
+      .single();
+
+    if (fetchError) throw fetchError;
 
     const newSubTask = {
       title,
       date,
       tag,
+      "completed" : false
     };
+    
+    // Check if task.subTasks is null or undefined and initialize it to an empty array if it is
+    if (!task.subTasks) {
+      task.subTasks = [];
+    }
+    
+    console.log(task.subTasks);
+    const updatedSubTasks = [...task.subTasks, newSubTask];
 
-    const task = await Task.findById(id);
+    const { error: updateError } = await supabase
+      .from('tasks')
+      .update({ subTasks: updatedSubTasks })
+      .eq('id', id);
 
-    task.subTasks.push(newSubTask);
+    if (updateError) throw updateError;
 
-    await task.save();
-
-    res
-      .status(200)
-      .json({ status: true, message: "SubTask added successfully." });
+    res.status(200).json({
+      status: true,
+      message: "SubTask added successfully.",
+    });
   } catch (error) {
     console.log(error);
     return res.status(400).json({ status: false, message: error.message });
   }
 };
 
+export const completeSubTask = async(req, res) => {
+  try{
+    const { id } = req.params;
+    console.log(req.body);
+
+    const { data: task, error: fetchError } = await supabase
+      .from('tasks')
+      .update({ subTasks: req.body })
+      .eq('id', id);
+
+    if (fetchError) throw fetchError;
+    res.status(200).json({
+      status: true,
+      message: "SubTask Updated successfully.",
+    });
+  }catch(error){
+    console.log(error);
+    return res.status(400).json({ status: false, message: error.message });
+  }
+}
+
 export const updateTask = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, date, team, stage, priority, assets } = req.body;
+    const { title, date, team, stage, priority, assets, submitted } = req.body;
+    console.log(req.body);
+    // Update the task using Supabase
+    const { error: updateError } = await supabase
+      .from('tasks')
+      .update({
+        title,
+        date,
+        priority: priority.toLowerCase(),
+        assets,
+        stage: stage.toLowerCase(),
+        team,
+        submitted
+      })
+      .eq('id', id);
 
-    const task = await Task.findById(id);
+    if (updateError) throw updateError;
 
-    task.title = title;
-    task.date = date;
-    task.priority = priority.toLowerCase();
-    task.assets = assets;
-    task.stage = stage.toLowerCase();
-    task.team = team;
-
-    await task.save();
-
-    res
-      .status(200)
-      .json({ status: true, message: "Task duplicated successfully." });
+    res.status(200).json({
+      status: true,
+      message: "Task updated successfully.",
+    });
   } catch (error) {
     console.log(error);
     return res.status(400).json({ status: false, message: error.message });
@@ -306,15 +348,17 @@ export const trashTask = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const task = await Task.findById(id);
+    // Set the isTrashed flag to true for the task
+    const { error: updateError } = await supabase
+      .from('tasks')
+      .update({ isTrashed: true })
+      .eq('id', id);
 
-    task.isTrashed = true;
-
-    await task.save();
+    if (updateError) throw updateError;
 
     res.status(200).json({
       status: true,
-      message: `Task trashed successfully.`,
+      message: "Task trashed successfully.",
     });
   } catch (error) {
     console.log(error);
@@ -326,26 +370,45 @@ export const deleteRestoreTask = async (req, res) => {
   try {
     const { id } = req.params;
     const { actionType } = req.query;
+    console.log(req.query);
 
     if (actionType === "delete") {
-      await Task.findByIdAndDelete(id);
-    } else if (actionType === "deleteAll") {
-      await Task.deleteMany({ isTrashed: true });
-    } else if (actionType === "restore") {
-      const resp = await Task.findById(id);
+      // Delete the task
+      const { error: deleteError } = await supabase
+        .from('tasks')
+        .delete()
+        .eq('id', id);
 
-      resp.isTrashed = false;
-      resp.save();
+      if (deleteError) throw deleteError;
+    } else if (actionType === "deleteAll") {
+      // Delete all tasks where isTrashed is true
+      const { error: deleteAllError } = await supabase
+        .from('tasks')
+        .delete()
+        .eq('isTrashed', true);
+
+      if (deleteAllError) throw deleteAllError;
+    } else if (actionType === "restore") {
+      // Restore a specific task
+      const { error: restoreError } = await supabase
+        .from('tasks')
+        .update({ isTrashed: false })
+        .eq('id', id);
+
+      if (restoreError) throw restoreError;
     } else if (actionType === "restoreAll") {
-      await Task.updateMany(
-        { isTrashed: true },
-        { $set: { isTrashed: false } }
-      );
+      // Restore all trashed tasks
+      const { error: restoreAllError } = await supabase
+        .from('tasks')
+        .update({ isTrashed: false })
+        .eq('isTrashed', true);
+
+      if (restoreAllError) throw restoreAllError;
     }
 
     res.status(200).json({
       status: true,
-      message: `Operation performed successfully.`,
+      message: "Operation performed successfully.",
     });
   } catch (error) {
     console.log(error);

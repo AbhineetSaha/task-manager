@@ -25,7 +25,16 @@ export function dateFormatter(dateString) {
 }
 
 export function getInitials(fullName) {
-  const names = fullName.split(" ");
+  if (!fullName) {
+    return "";
+  }
+
+  const names = fullName.trim().split(" ").filter(Boolean); // Trim and remove empty strings
+
+  if (names.length === 0) {
+    console.error("No names found after processing.");
+    return "";
+  }
 
   const initials = names.slice(0, 2).map((name) => name[0].toUpperCase());
 
@@ -42,7 +51,7 @@ export const PRIOTITYSTYELS = {
 
 export const TASK_TYPE = {
   todo: "bg-blue-600",
-  "in progress": "bg-yellow-600",
+  "in-progress": "bg-yellow-600",
   completed: "bg-green-600",
 };
 

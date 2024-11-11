@@ -7,12 +7,12 @@ import {
   MdKeyboardDoubleArrowUp,
   MdOutlineRestore,
 } from "react-icons/md";
-import { tasks } from "../assets/data";
+import {toast} from 'sonner';
 import Title from "../components/Title";
 import Button from "../components/Button";
 import { PRIOTITYSTYELS, TASK_TYPE } from "../utils";
-import AddUser from "../components/AddUser";
 import ConfirmatioDialog from "../components/Dialogs";
+import { useDeleteRestoreTaskMutation, useGetAllTaskQuery } from "../redux/slices/api/taskApiSlice"
 
 const ICONS = {
   high: <MdKeyboardDoubleArrowUp />,
@@ -26,6 +26,55 @@ const Trash = () => {
   const [msg, setMsg] = useState(null);
   const [type, setType] = useState("delete");
   const [selected, setSelected] = useState("");
+
+  const { data, isLoading, refetch } = useGetAllTaskQuery({
+    strQuery: "",
+    isTrashed: true,
+    search: ""
+  })
+  const [ deleteRestore ] = useDeleteRestoreTaskMutation();
+
+  const deleteRestoreHandler = async () => {
+    try {
+      let res;
+
+      switch(type){
+        case "delete": 
+          res = await deleteRestore({
+            id: selected,
+            actionType: "delete"
+          }).unwrap();
+          break;
+        case "deleteAll":
+          res = await deleteRestore({
+            id: selected,
+            actionType: "deleteAll"
+          }).unwrap();
+          break;
+        case "restore": 
+          res = await deleteRestore({
+            id: selected,
+            actionType: "restore"
+          }).unwrap();
+          break;
+        case "restoreAll":
+          res = await deleteRestore({
+            id: selected,
+            actionType: "restoreAll"
+          }).unwrap();
+          break;
+      }
+
+      setTimeout(() => {
+        toast.success(res?.message);
+        refetch();
+        window.location.reload();
+      }, 500);
+    } catch (error) {
+      console.log(error);
+      toast.error(error?.data?.message | error?.error)
+    }
+  }
 
   const deleteAllClick = () => {
     setType("deleteAll");
@@ -51,6 +100,7 @@ const Trash = () => {
     setMsg("Do you want to restore the selected item?");
     setOpenDialog(true);
   };
+
 
   const TableHeader = () => (
     <thead className='border-b border-gray-300'>
@@ -93,11 +143,11 @@ const Trash = () => {
       <td className='py-2 flex gap-1 justify-end'>
         <Button
           icon={<MdOutlineRestore className='text-xl text-gray-500' />}
-          onClick={() => restoreClick(item._id)}
+          onClick={() => restoreClick(item.id)}
         />
         <Button
           icon={<MdDelete className='text-xl text-red-600' />}
-          onClick={() => deleteClick(item._id)}
+          onClick={() => deleteClick(item.id)}
         />
       </td>
     </tr>
@@ -129,7 +179,7 @@ const Trash = () => {
             <table className='w-full mb-5'>
               <TableHeader />
               <tbody>
-                {tasks?.map((tk, id) => (
+                {data?.tasks?.data.map((tk, id) => (
                   <TableRow key={id} item={tk} />
                 ))}
               </tbody>

@@ -78,7 +78,7 @@ With the rise of remote work and dispersed teams, there is a growing need for to
     - Node.js with Express.js
     
 - **Database:**
-    - MongoDB for efficient and scalable data storage.
+    - Postgresql with Supabase
 
 
 The Cloud-Based Task Manager is an innovative solution that brings efficiency and organization to task management within teams. By harnessing the power of the MERN stack and modern frontend technologies, the platform provides a seamless experience for both administrators and users, fostering collaboration and productivity.

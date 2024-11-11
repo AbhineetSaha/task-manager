@@ -33,12 +33,12 @@
 
 @keyframes rotate-in-up-left {
   0% {
-    transform-origin: left bottom;
-    transform: rotate(90deg);
+    transform-origin: right bottom;
+    transform: rotate(180deg);
     opacity: 0;
   }
   100% {
-    transform-origin: left bottom;
+    transform-origin: right bottom;
     transform: rotate(0);
     opacity: 1;
   }

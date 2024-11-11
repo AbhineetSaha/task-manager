@@ -1,6 +1,6 @@
 import clsx from "clsx";
 import moment from "moment";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { FaBug, FaTasks, FaThumbsUp, FaUser } from "react-icons/fa";
 import { GrInProgress } from "react-icons/gr";
 import {
@@ -10,16 +10,17 @@ import {
   MdOutlineDoneAll,
   MdOutlineMessage,
   MdTaskAlt,
+  MdPending
 } from "react-icons/md";
 import { RxActivityLog } from "react-icons/rx";
 import { useParams } from "react-router-dom";
 import { toast } from "sonner";
-import { tasks } from "../assets/data";
 import Tabs from "../components/Tabs";
 import { PRIOTITYSTYELS, TASK_TYPE, getInitials } from "../utils";
 import Loading from "../components/Loader";
 import Button from "../components/Button";
-
+import { useGetSingleTaskQuery, usePostTaskActivityMutation } from "../redux/slices/api/taskApiSlice"
+import { useGetUserMutation } from "../redux/slices/api/userApiSlice";
 const assets = [
   "https://images.pexels.com/photos/2418664/pexels-photo-2418664.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=2",
   "https://images.pexels.com/photos/8797307/pexels-photo-8797307.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=2",
@@ -88,13 +89,43 @@ const act_types = [
 
 const TaskDetails = () => {
   const { id } = useParams();
-
+  const { data, isLoading, refetch } = useGetSingleTaskQuery(id);
   const [selected, setSelected] = useState(0);
-  const task = tasks[3];
+  const [getUser, { isLoading: isFetching }] = useGetUserMutation(); // Assuming this is the correct hook
+  const [user, setUser] = useState([]);
+
+  const getNamesForTeam = async () => {
+    if (data && data.task && data.task.team) {
+      const userPromises = data.task.team.map(id => getUser(id));
+      try {
+        const users = await Promise.all(userPromises);
+        const validUsers = users.map(response => response.data).filter(user => user);
+        setUser(validUsers.map((u) => (u)));
+      } catch (error) {
+        console.error('Failed to fetch users:', error);
+        // Handle errors appropriately in your UI
+      }
+    }
+  };
+
+  useEffect(() => {
+    getNamesForTeam();
+  }, [data?.task?.team]);
+
+  console.log(user);
+
+  if(isLoading){
+    return(
+      <div className="py-10">
+        <Loading />
+      </div>
+    )
+  }
 
   return (
+    
     <div className='w-full flex flex-col gap-3 mb-4 overflow-y-hidden'>
-      <h1 className='text-2xl text-gray-600 font-bold'>{task?.title}</h1>
+      <h1 className='text-2xl text-gray-600 font-bold'>{data?.task?.title}</h1>
 
       <Tabs tabs={TABS} setSelected={setSelected}>
         {selected === 0 ? (
@@ -106,40 +137,40 @@ const TaskDetails = () => {
                   <div
                     className={clsx(
                       "flex gap-1 items-center text-base font-semibold px-3 py-1 rounded-full",
-                      PRIOTITYSTYELS[task?.priority],
-                      bgColor[task?.priority]
+                      PRIOTITYSTYELS[data?.task?.priority],
+                      bgColor[data?.task?.priority]
                     )}
                   >
-                    <span className='text-lg'>{ICONS[task?.priority]}</span>
-                    <span className='uppercase'>{task?.priority} Priority</span>
+                    <span className='text-lg'>{ICONS[data?.task?.priority]}</span>
+                    <span className='uppercase'>{data?.task?.priority} Priority</span>
                   </div>
 
                   <div className={clsx("flex items-center gap-2")}>
                     <div
                       className={clsx(
                         "w-4 h-4 rounded-full",
-                        TASK_TYPE[task.stage]
+                        TASK_TYPE[data?.task?.stage]
                       )}
                     />
-                    <span className='text-black uppercase'>{task?.stage}</span>
+                    <span className='text-black uppercase'>{data?.task?.stage}</span>
                   </div>
                 </div>
 
                 <p className='text-gray-500'>
-                  Created At: {new Date(task?.date).toDateString()}
+                  Created At: {new Date(data?.task?.date).toDateString()}
                 </p>
 
                 <div className='flex items-center gap-8 p-4 border-y border-gray-200'>
                   <div className='space-x-2'>
                     <span className='font-semibold'>Assets :</span>
-                    <span>{task?.assets?.length}</span>
+                    <span>{data?.task?.assets?.length}</span>
                   </div>
 
                   <span className='text-gray-400'>|</span>
 
                   <div className='space-x-2'>
                     <span className='font-semibold'>Sub-Task :</span>
-                    <span>{task?.subTasks?.length}</span>
+                    <span>{data?.task?.subTasks?.length}</span>
                   </div>
                 </div>
 
@@ -148,7 +179,7 @@ const TaskDetails = () => {
                     TASK TEAM
                   </p>
                   <div className='space-y-3'>
-                    {task?.team?.map((m, index) => (
+                    {user?.map((m, index) => (
                       <div
                         key={index}
                         className='flex gap-4 py-2 items-center border-t border-gray-200'
@@ -177,10 +208,10 @@ const TaskDetails = () => {
                     SUB-TASKS
                   </p>
                   <div className='space-y-8'>
-                    {task?.subTasks?.map((el, index) => (
+                    {data?.task?.subTasks?.map((el, index) => (
                       <div key={index} className='flex gap-3'>
                         <div className='w-10 h-10 flex items-center justify-center rounded-full bg-violet-50-200'>
-                          <MdTaskAlt className='text-violet-600' size={26} />
+                          {el.completed ? <MdTaskAlt className='text-violet-600' size={26} /> : <MdPending className='text-violet-600' size={26} />}
                         </div>
 
                         <div className='space-y-1'>
@@ -206,11 +237,11 @@ const TaskDetails = () => {
                 <p className='text-lg font-semibold'>ASSETS</p>
 
                 <div className='w-full grid grid-cols-2 gap-4'>
-                  {task?.assets?.map((el, index) => (
+                  {data?.task?.assets?.map((el, index) => (
                     <img
                       key={index}
                       src={el}
-                      alt={task?.title}
+                      alt={data?.task?.title}
                       className='w-full rounded h-28 md:h-36 2xl:h-52 cursor-pointer transition-all duration-700 hover:scale-125 hover:z-50'
                     />
                   ))}
@@ -220,7 +251,7 @@ const TaskDetails = () => {
           </>
         ) : (
           <>
-            <Activities activity={task?.activities} id={id} />
+            <Activities activity={data?.task?.activities} id={id} refetch={refetch} />
           </>
         )}
       </Tabs>
@@ -228,42 +259,89 @@ const TaskDetails = () => {
   );
 };
 
-const Activities = ({ activity, id }) => {
-  const [selected, setSelected] = useState(act_types[0]);
-  const [text, setText] = useState("");
-  const isLoading = false;
+const Card = ({ item }) => {
+  const [getUser, { isLoading: isFetching }] = useGetUserMutation();
+  const [itemData, setItemData] = useState(item); // Initialize with item to maintain initial structure
 
-  const handleSubmit = async () => {};
+  const getNamesForTeam = async () => {
+    if (item && item.by) {
+      try {
+        const response = await getUser(item.by);
+        if (response.data) {
+          setItemData({
+            ...item,
+            by: response.data // Update the 'by' field with fetched user data
+          });
+        } else {
+          console.error('No data returned for user:', response);
+        }
+      } catch (error) {
+        console.error('Failed to fetch users:', error);
+      }
+    }
+  };
 
-  const Card = ({ item }) => {
-    return (
-      <div className='flex space-x-4'>
-        <div className='flex flex-col items-center flex-shrink-0'>
-          <div className='w-10 h-10 flex items-center justify-center'>
-            {TASKTYPEICON[item?.type]}
-          </div>
-          <div className='w-full flex items-center'>
-            <div className='w-0.5 bg-gray-300 h-full'></div>
-          </div>
+  useEffect(() => {
+    getNamesForTeam();
+  }, [item]); // Include item in the dependency array
+
+  if (isFetching) {
+    return <p>Loading...</p>; // Display a loading message while fetching data
+  }
+
+  return (
+    <div className='flex space-x-4'>
+      <div className='flex flex-col items-center flex-shrink-0'>
+        <div className='w-10 h-10 flex items-center justify-center'>
+          {TASKTYPEICON[itemData?.type]}
         </div>
-
-        <div className='flex flex-col gap-y-1 mb-8'>
-          <p className='font-semibold'>{item?.by?.name}</p>
-          <div className='text-gray-500 space-y-2'>
-            <span className='capitalize'>{item?.type}</span>
-            <span className='text-sm'>{moment(item?.date).fromNow()}</span>
-          </div>
-          <div className='text-gray-700'>{item?.activity}</div>
+        <div className='w-full flex items-center'>
+          <div className='w-0.5 bg-gray-300 h-full'></div>
         </div>
       </div>
-    );
+
+      <div className='flex flex-col gap-y-1 mb-8'>
+        <p className='font-semibold'>{itemData?.by?.name}</p>
+        <div className='text-gray-500 space-y-2'>
+          <span className='capitalize'>{itemData?.type}</span>
+          <span className='text-sm'> {moment(itemData?.date).fromNow()}</span>
+        </div>
+        <div className='text-gray-700'>{itemData?.activity}</div>
+      </div>
+    </div>
+  );
+};
+
+const Activities = ({ activity, id, refetch }) => {
+  const [selected, setSelected] = useState(act_types[0]);
+  const [text, setText] = useState("");
+  const [postActivity, { isLoading }] = usePostTaskActivityMutation();
+
+  const handleSubmit = async () => {
+    try{
+      const activityData = {
+        type: selected?.toLowerCase(),
+        activity: text,
+      }
+
+      const result = await postActivity({
+        data: activityData,
+        id,
+      }).unwrap();
+
+      setText("");
+      toast.success(result.message);
+      refetch();
+    }catch (error){
+      console.log(error);
+      toast.error(error?.data?.message || error?.error)
+    }
   };
 
   return (
     <div className='w-full flex gap-10 2xl:gap-20 min-h-screen px-10 py-8 bg-white shadow rounded-md justify-between overflow-y-auto'>
       <div className='w-full md:w-1/2'>
         <h4 className='text-gray-600 font-semibold text-lg mb-5'>Activities</h4>
-
         <div className='w-full'>
           {activity?.map((el, index) => (
             <Card
@@ -285,8 +363,8 @@ const Activities = ({ activity, id }) => {
               <input
                 type='checkbox'
                 className='w-4 h-4'
-                checked={selected === item ? true : false}
-                onChange={(e) => setSelected(item)}
+                checked={selected === item}
+                onChange={() => setSelected(item)}
               />
               <p>{item}</p>
             </div>
@@ -298,19 +376,17 @@ const Activities = ({ activity, id }) => {
             placeholder='Type ......'
             className='bg-white w-full mt-10 border border-gray-300 outline-none p-4 rounded-md focus:ring-2 ring-blue-500'
           ></textarea>
-          {isLoading ? (
-            <Loading />
-          ) : (
-            <Button
-              type='button'
-              label='Submit'
-              onClick={handleSubmit}
-              className='bg-blue-600 text-white rounded'
-            />
-          )}
+          <Button
+            type='button'
+            label='Submit'
+            onClick={handleSubmit}
+            className='bg-blue-600 text-white rounded'
+          />
         </div>
       </div>
     </div>
   );
 };
+
+
 export default TaskDetails;
