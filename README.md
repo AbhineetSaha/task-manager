@@ -96,6 +96,7 @@ The Cloud-Based Task Manager is an innovative solution that brings efficiency an
 First, create the environment variables file `.env` in the server folder. The `.env` file contains the following environment variables:
 
 - SUPABASE_URL = `your Supabase API URL`
+- SUPABASE_KEY = `your Supabase API Key`
 - JWT_SECRET = `any secret key - must be secured`
 - PORT = `8800` or any port number
 - NODE_ENV = `development`
